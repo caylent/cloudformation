@@ -145,11 +145,11 @@ Outputs:
   PrivateSubnet1:
     Description: SubnetId of the public subnet
     Value:
-      Ref: PublicSubnet1
+      Ref: PrivateSubnet1
   PrivateSubnet2:
     Description: SubnetId of the public subnet
     Value:
-      Ref: PublicSubnet2
+      Ref: PrivateSubnet2
 Metadata:
   CAYLENT::NETWORK-DEPLOYMENT:
     CAYLENT::ACTION:
