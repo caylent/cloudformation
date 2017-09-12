@@ -16,7 +16,7 @@ Metadata:
         - EC2ServerInstanceSize
         - EC2ServerLogRetentioninDays
     - Label:
-        default: 'Database Parameters'
+        default: 'Database Parameters' # to do in a future version
         Parameters:
         - DBServerInstanceSize
         - DBServerStorageType
@@ -132,7 +132,7 @@ Resources:
         ToPort: '80'
         CidrIp: 0.0.0.0/0
       Tags:
-        - Value: ${AWS::StackName}-sg-lb-stack
+        - Value: caylent-sg-lb-stack
           Key: Name
   AutoScalingGroup1:
     Type: 'AWS::AutoScaling::AutoScalingGroup'
