@@ -1,0 +1,120 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Operations: Alert topic, a caylent.com template' 
+#original template by widdix (cloudonaut.io)
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+    - Label:
+        default: 'Alert Parameters'
+      Parameters:
+      - Email
+      - HttpEndpoint
+      - HttpsEndpoint
+    - Label:
+        default: 'Fallback Parameters'
+      Parameters:
+      - FallbackEmail
+Parameters:
+  Email:
+    Description: 'Optional email address that will receive alerts'
+    Type: String
+    Default: ''
+  HttpEndpoint:
+    Description: 'Optional HTTP endpoint that will receive alerts via POST requests'
+    Type: String
+    Default: ''
+  HttpsEndpoint:
+    Description: 'Optional HTTPS endpoint that will receive alerts via POST requests  (e.g. caylent.net)'
+    Type: String
+    Default: ''
+  FallbackEmail:
+    Description: 'Optional email address that will receive alerts if alerts can not be delivered'
+    Type: String
+    Default: ''
+Conditions:
+  HasEmail: !Not [!Equals [!Ref Email, '']]
+  HasHttpEndpoint: !Not [!Equals [!Ref HttpEndpoint, '']]
+  HasHttpsEndpoint: !Not [!Equals [!Ref HttpsEndpoint, '']]
+  HasFallbackEmail: !Not [!Equals [!Ref FallbackEmail, '']]
+Resources:
+  Topic:
+    Type: 'AWS::SNS::Topic'
+    Properties: {}
+  TopicPolicy:
+    Type: 'AWS::SNS::TopicPolicy'
+    Properties:
+      PolicyDocument:
+        Id: Id1
+        Version: '2012-10-17'
+        Statement:
+        - Sid: Sid1
+          Effect: Allow
+          Principal:
+            Service:
+            - 'events.amazonaws.com' # Allow CloudWatch Events
+            - 'budgets.amazonaws.com' # Allow Budget Notifications
+            - 'rds.amazonaws.com' # Allow RDS Events
+          Action: 'sns:Publish'
+          Resource: !Ref Topic
+      Topics:
+      - !Ref Topic
+  FallbackTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties: {}
+  NumberOfNotificationsFailedTooHighAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'Alerts could not be delivered'
+      Namespace: 'AWS/SNS'
+      MetricName: NumberOfNotificationsFailed
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      AlarmActions:
+      - !Ref FallbackTopic
+      Dimensions:
+      - Name: TopicName
+        Value: !GetAtt Topic.TopicName
+  EmailSubscription:
+    Condition: HasEmail
+    Type: 'AWS::SNS::Subscription'
+    Properties:
+      Endpoint: !Ref Email
+      Protocol: email
+      TopicArn: !Ref Topic
+  HttpEndpointSubscription:
+    Condition: HasHttpEndpoint
+    Type: 'AWS::SNS::Subscription'
+    Properties:
+      Endpoint: !Ref HttpEndpoint
+      Protocol: http
+      TopicArn: !Ref Topic
+  HttpsEndpointSubscription:
+    Condition: HasHttpsEndpoint
+    Type: 'AWS::SNS::Subscription'
+    Properties:
+      Endpoint: !Ref HttpsEndpoint
+      Protocol: https
+      TopicArn: !Ref Topic
+  FallbackEmailSubscription:
+    Condition: HasFallbackEmail
+    Type: 'AWS::SNS::Subscription'
+    Properties:
+      Endpoint: !Ref FallbackEmail
+      Protocol: email
+      TopicArn: !Ref FallbackTopic
+Outputs:
+  TemplateID:
+    Description: 'caylent.com template id'
+    Value: 'operations/alert'
+  StackName:
+    Description: 'Stack name'
+    Value: !Sub '${AWS::StackName}'
+  TopicARN:
+    Description: 'The ARN of the alert topic.'
+    Value: !Ref Topic
+    Export:
+      Name: !Sub '${AWS::StackName}-TopicARN'
