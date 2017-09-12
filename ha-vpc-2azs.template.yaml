@@ -175,4 +175,4 @@ Outputs:
     Description: 'Private Subnet 2'
     Value: !Ref PrivateSubnet2
     Export:
-      Name: !Sub '${AWS::StackName}-PrivateSubnet2'
+      Name: !Sub '${AWS::StackName}-PrivateSubnet2'    
