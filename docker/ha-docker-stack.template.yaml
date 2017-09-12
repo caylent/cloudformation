@@ -14,7 +14,7 @@ Metadata:
         - EC2ServerKeyName
         - EC2ServerIAMUserSSHAccess
         - EC2ServerInstanceSize
-        - EC2ServerLogRetentioninDays
+        - EC2ServerLogRetentionInDays
     - Label:
         default: 'Database Parameters' # to do in a future version
         Parameters:
@@ -45,7 +45,7 @@ Parameters:
         Description: 'The instance size of EC2 servers (e.g. t2.medium).'
         Type: String
         Default: 't2.medium'
-    EC2ServerLogRetentioninDays: # to do in a future version
+    EC2ServerLogRetentionInDays: # to do in a future version
         Description: 'Specifies the number of days you want to retain log events.'
         Type: Number
         Default: 14
@@ -137,13 +137,39 @@ Resources:
   EC2ServerLogs: # to do in a future version
     Type: 'AWS::Logs::LogGroup'
     Properties:
-      RetentionInDays: !Ref EC2ServerLogsRetentionInDays
+      RetentionInDays: !Ref EC2ServerLogRetentionInDays
   EC2ServerInstanceProfile:
     Type: 'AWS::IAM::InstanceProfile'
     Properties:
       Path: '/'
       Roles:
       - !Ref EC2ServerIAMRole
+  EC2ServerIAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - 'ec2.amazonaws.com'
+          Action:
+          - 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+      - PolicyName: logs
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - 'logs:CreateLogGroup'
+            - 'logs:CreateLogStream'
+            - 'logs:PutLogEvents'
+            - 'logs:DescribeLogStreams'
+            Resource:
+            - 'arn:aws:logs:*:*:*'
   EC2ServerIAMPolicySSHAccess:
     Type: 'AWS::IAM::Policy'
     Condition: HasIAMUserSSHAccess
