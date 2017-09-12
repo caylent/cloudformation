@@ -349,13 +349,16 @@ Resources:
       VPCZoneIdentifier:
         - 'Fn::ImportValue': !Sub '${ParentVPCStack}-PublicSubnet1'
         - 'Fn::ImportValue': !Sub '${ParentVPCStack}-PublicSubnet2'
-      NotificationConfigurations:
-        - TopicARN: 'arn:aws:sns:us-east-1:327120324092:cf-stack-deployment-notifications'
-          NotificationTypes:
+      NotificationConfigurations: !If
+      - HasAlertTopic
+      - - NotificationTypes:
             - 'autoscaling:EC2_INSTANCE_LAUNCH'
             - 'autoscaling:EC2_INSTANCE_LAUNCH_ERROR'
             - 'autoscaling:EC2_INSTANCE_TERMINATE'
             - 'autoscaling:EC2_INSTANCE_TERMINATE_ERROR'
+          TopicARN:
+            'Fn::ImportValue': !Sub '${ParentAlertStack}-TopicARN'
+      - !Ref 'AWS::NoValue'
       Tags:
         - Key: Name
           Value: caylent-swarm-worker
