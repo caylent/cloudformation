@@ -1,0 +1,548 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: 'Docker Swarm on EC2: highly available and scalable, a caylent.com template'
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+    - Label:
+        default: 'Parent Stacks'
+        Parameters:
+        - ParentVPCStack
+        - ParentAlertStack
+    - Label:
+        default: 'EC2 Parameters'
+        Parameters:
+        - EC2ServerKeyName
+        - EC2ServerIAMUserSSHAccess
+        - EC2ServerInstanceSize
+        - EC2ServerLogRetentioninDays
+    - Label:
+        default: 'Database Parameters'
+        Parameters:
+        - DBServerInstanceSize
+        - DBServerStorageType
+        - DBServerStorageSize
+        - DBBackupRetentionPeriod
+Parameters:
+    ParentVPCStack:
+        Description: 'Stack name of parent VPC stack based on vpc/ha-vpc-*azs.template.yaml.'
+        Type: String
+    ParentAlertStack:
+        Description: 'Optional but recommended stack name of parent alert stack based on operations/alert.yaml template.'
+        Type: String
+        Default: ''
+    EC2ServerKeyName:
+        Description: 'Optional key pair of the ec2-user to establish a SSH connection to the ec2 servers.'
+        Type: String
+        Default: ''
+    EC2ServerIAMUserSSHAccess:
+        Description: 'Synchronize public keys of IAM users to enable personalized SSH access.'
+        Type: String
+        Default: false
+        AllowedValues:
+        - true
+        - false
+    EC2ServerInstanceSize:
+        Description: 'The instance size of EC2 servers (e.g. t2.medium).'
+        Type: String
+        Default: 't2.medium'
+    EC2ServerLogRetentioninDays:
+        Description: 'Specifies the number of days you want to retain log events.'
+        Type: Number
+        Default: 14
+        AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+    DBServerInstanceSize:
+        Description: 'The instance size of database server (e.g. db.t2.medium).'
+        Type: String
+        Default: 'db.t2.medium'
+    DBServerStorageType:
+        Description: 'The type of storage of database server (e.g. SSD).'
+        Type: String
+        Default: 'SSD'
+    DBServerStorageSize:
+        Description: 'The amount of storage of database server in GB (e.g. 100).'
+        Type: Number
+        Default: 100
+    DBBackupRetentionPeriod:
+        Description: 'The number of days to keep snapshots of the database.'
+        Type: Number
+        Default: 30
+Mappings:
+  RegionMap:
+    'ap-south-1':
+      AMI: 'ami-099fe766'
+    'eu-west-2':
+      AMI: 'ami-996372fd'
+    'eu-west-1':
+      AMI: 'ami-785db401'
+    'ap-northeast-2':
+      AMI: 'ami-d28a53bc'
+    'ap-northeast-1':
+      AMI: 'ami-ea4eae8c'
+    'sa-east-1':
+      AMI: 'ami-10186f7c'
+    'ca-central-1':
+      AMI: 'ami-b3d965d7'
+    'ap-southeast-1':
+      AMI: 'ami-6f198a0c'
+    'ap-southeast-2':
+      AMI: 'ami-e2021d81'
+    'eu-central-1':
+      AMI: 'ami-1e339e71'
+    'us-east-1':
+      AMI: 'ami-cd0f5cb6'
+    'us-east-2':
+      AMI: 'ami-10547475'
+    'us-west-1':
+      AMI: 'ami-09d2fb69'
+    'us-west-2':
+      AMI: 'ami-6e1a0117'
+Conditions:
+  HasKeyName: !Not [!Equals [!Ref EC2ServerKeyName, '']]
+  HasIAMUserSSHAccess: !Equals [!Ref EC2ServerIAMUserSSHAccess, 'true']
+  HasAlertTopic: !Not [!Equals [!Ref ParentAlertStack, '']]
+Resources:
+  LoadBalancer:
+    Type: 'AWS::ElasticLoadBalancing::LoadBalancer'
+    Properties:
+      Subnets:
+        - 'Fn::ImportValue': !Sub '${ParentVPCStack}-PublicSubnet1'
+        - 'Fn::ImportValue': !Sub '${ParentVPCStack}-PublicSubnet2'
+      Listeners:
+        - LoadBalancerPort: '80'
+          InstancePort: '80'
+          Protocol: HTTP
+          InstanceProtocol: HTTP
+      HealthCheck:
+        Target: 'HTTP:80/'
+        HealthyThreshold: '2'
+        UnhealthyThreshold: '10'
+        Interval: '30'
+        Timeout: '5'
+      SecurityGroups:
+        - !Ref ELBSecurityGroup
+  ELBSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Website access for load balancer
+      VpcId:
+        'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
+      SecurityGroupIngress:
+        IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: 0.0.0.0/0
+      Tags:
+        - Value: ${AWS::StackName}-sg-lb-stack
+          Key: Name
+  AutoScalingGroup1:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      LaunchConfigurationName: !Ref AutoScalingGroup1LaunchConfig
+      MinSize: 3
+      MaxSize: 10
+      LoadBalancerNames:
+        - !Ref LoadBalancer
+      VPCZoneIdentifier:
+        - 'Fn::ImportValue': !Sub '${ParentVPCStack}-PublicSubnet1'
+        - 'Fn::ImportValue': !Sub '${ParentVPCStack}-PublicSubnet2'
+      NotificationConfigurations: !If
+      - HasAlertTopic
+      - - NotificationTypes:
+            - 'autoscaling:EC2_INSTANCE_LAUNCH'
+            - 'autoscaling:EC2_INSTANCE_LAUNCH_ERROR'
+            - 'autoscaling:EC2_INSTANCE_TERMINATE'
+            - 'autoscaling:EC2_INSTANCE_TERMINATE_ERROR'
+          TopicARN:
+            'Fn::ImportValue': !Sub '${ParentAlertStack}-TopicARN'
+      - !Ref 'AWS::NoValue'
+      Tags:
+        - Key: Name
+          Value: caylent-swarm-master
+          PropagateAtLaunch: true
+  AutoScalingGroup1LaunchConfig:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Properties:
+      AssociatePublicIpAddress: true    
+      KeyName: !If [HasKeyName, !Ref EC2ServerKeyName, !Ref 'AWS::NoValue']
+      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', AMI]
+      SecurityGroups:
+        - !Ref AutoScalingGroup1SecurityGroup
+      InstanceType: !Ref EC2ServerInstanceSize
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 250
+        - DeviceName: /dev/sdc
+          VirtualName: ephemeral0
+  ScaleUpPolicy:
+    Type: 'AWS::AutoScaling::ScalingPolicy'
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref AutoScalingGroup1
+      Cooldown: '1'
+      ScalingAdjustment: '2'
+  CPUAlarmHigh:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      EvaluationPeriods: '5'
+      Statistic: Average
+      Threshold: '60'
+      AlarmDescription: Alarm if CPU too high or metric disappears indicating instance is down
+      Period: '60'
+      AlarmActions:
+        - !Ref ScaleUpPolicy
+      Namespace: AWS/EC2
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref AutoScalingGroup1
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: CPUUtilization
+  TerminationLifecycleHook:
+    Type: 'AWS::AutoScaling::LifecycleHook'
+    Properties:
+      AutoScalingGroupName: !Ref AutoScalingGroup1
+      LifecycleTransition: 'autoscaling:EC2_INSTANCE_TERMINATING'
+      NotificationMetadata: '{"stack_name" : "${AWS::StackName}"}'
+      NotificationTargetARN: 'arn:aws:sns:us-east-1:327120324092:cf-stack-deployment-notifications'
+      RoleARN: !GetAtt 
+        - AutoScalingGroup1ASGLifeCycleHookRole
+        - Arn
+  AutoScalingGroup1LaunchLifecycleHook:
+    Type: 'AWS::AutoScaling::LifecycleHook'
+    Properties:
+      AutoScalingGroupName: !Ref AutoScalingGroup1
+      LifecycleTransition: 'autoscaling:EC2_INSTANCE_LAUNCHING'
+      NotificationMetadata: '{"stack_uuid" : "${AWS::StackName}"}'
+      NotificationTargetARN: 'arn:aws:sns:us-east-1:327120324092:cf-stack-deployment-notifications'
+      RoleARN: !GetAtt 
+        - AutoScalingGroup1ASGLifeCycleHookRole
+        - Arn
+  AutoScalingGroup1SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'swarm-master-group, website and caylent server management access.'
+      VpcId: 
+        'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '443'
+          ToPort: '443'
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Value: swarm-master-sg-asg
+          Key: Name
+  AutoScalingGroup1SecurityGroupIngressDcPorts1AutoScalingGroup1:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '2375'
+      ToPort: '2375'
+      SourceSecurityGroupId: !Ref AutoScalingGroup1SecurityGroup
+      GroupId: !Ref AutoScalingGroup1SecurityGroup
+    DependsOn:
+      - AutoScalingGroup1SecurityGroup
+      - AutoScalingGroup1SecurityGroup
+  AutoScalingGroup1SecurityGroupIngressDcPorts2AutoScalingGroup1:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '3375'
+      ToPort: '3375'
+      SourceSecurityGroupId: !Ref AutoScalingGroup1SecurityGroup
+      GroupId: !Ref AutoScalingGroup1SecurityGroup
+    DependsOn:
+      - AutoScalingGroup1SecurityGroup
+      - AutoScalingGroup1SecurityGroup
+  AutoScalingGroup1SecurityGroupIngressDcPorts3AutoScalingGroup1:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '2377'
+      ToPort: '2377'
+      SourceSecurityGroupId: !Ref AutoScalingGroup1SecurityGroup
+      GroupId: !Ref AutoScalingGroup1SecurityGroup
+    DependsOn:
+      - AutoScalingGroup1SecurityGroup
+      - AutoScalingGroup1SecurityGroup
+  AutoScalingGroup1SecurityGroupIngressDcPorts4AutoScalingGroup1:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '7946'
+      ToPort: '7946'
+      SourceSecurityGroupId: !Ref AutoScalingGroup1SecurityGroup
+      GroupId: !Ref AutoScalingGroup1SecurityGroup
+    DependsOn:
+      - AutoScalingGroup1SecurityGroup
+      - AutoScalingGroup1SecurityGroup
+  AutoScalingGroup1SecurityGroupIngressDcPorts1AutoScalingGroup2:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '2375'
+      ToPort: '2375'
+      SourceSecurityGroupId: !Ref AutoScalingGroup2SecurityGroup
+      GroupId: !Ref AutoScalingGroup1SecurityGroup
+    DependsOn:
+      - AutoScalingGroup2SecurityGroup
+      - AutoScalingGroup1SecurityGroup
+  AutoScalingGroup1SecurityGroupIngressDcPorts2AutoScalingGroup2:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '3375'
+      ToPort: '3375'
+      SourceSecurityGroupId: !Ref AutoScalingGroup2SecurityGroup
+      GroupId: !Ref AutoScalingGroup1SecurityGroup
+    DependsOn:
+      - AutoScalingGroup2SecurityGroup
+      - AutoScalingGroup1SecurityGroup
+  AutoScalingGroup1SecurityGroupIngressDcPorts3AutoScalingGroup2:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '2377'
+      ToPort: '2377'
+      SourceSecurityGroupId: !Ref AutoScalingGroup2SecurityGroup
+      GroupId: !Ref AutoScalingGroup1SecurityGroup
+    DependsOn:
+      - AutoScalingGroup2SecurityGroup
+      - AutoScalingGroup1SecurityGroup
+  AutoScalingGroup1SecurityGroupIngressDcPorts4AutoScalingGroup2:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '7946'
+      ToPort: '7946'
+      SourceSecurityGroupId: !Ref AutoScalingGroup2SecurityGroup
+      GroupId: !Ref AutoScalingGroup1SecurityGroup
+    DependsOn:
+      - AutoScalingGroup2SecurityGroup
+      - AutoScalingGroup1SecurityGroup
+  AutoScalingGroup1ASGLifeCycleHookRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - autoscaling.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AutoScalingNotificationAccessRole'
+  AutoScalingGroup2:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      LaunchConfigurationName: !Ref AutoScalingGroup2LaunchConfig
+      MinSize: 2
+      MaxSize: 10
+      LoadBalancerNames:
+        - !Ref LoadBalancer
+      VPCZoneIdentifier:
+        - 'Fn::ImportValue': !Sub '${ParentVPCStack}-PublicSubnet1'
+        - 'Fn::ImportValue': !Sub '${ParentVPCStack}-PublicSubnet2'
+      NotificationConfigurations:
+        - TopicARN: 'arn:aws:sns:us-east-1:327120324092:cf-stack-deployment-notifications'
+          NotificationTypes:
+            - 'autoscaling:EC2_INSTANCE_LAUNCH'
+            - 'autoscaling:EC2_INSTANCE_LAUNCH_ERROR'
+            - 'autoscaling:EC2_INSTANCE_TERMINATE'
+            - 'autoscaling:EC2_INSTANCE_TERMINATE_ERROR'
+      Tags:
+        - Key: Name
+          Value: caylent-swarm-worker
+          PropagateAtLaunch: true
+  AutoScalingGroup2LaunchConfig:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Properties:
+      AssociatePublicIpAddress: true
+      KeyName: !If [HasKeyName, !Ref EC2ServerKeyName, !Ref 'AWS::NoValue']
+      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', AMI]
+      SecurityGroups:
+        - !Ref AutoScalingGroup2SecurityGroup
+      InstanceType: !Ref EC2ServerInstanceSize
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 250
+        - DeviceName: /dev/sdc
+          VirtualName: ephemeral0
+  AutoScalingGroup2ScaleUpPolicy:
+    Type: 'AWS::AutoScaling::ScalingPolicy'
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref AutoScalingGroup2
+      Cooldown: '1'
+      ScalingAdjustment: '2'
+  AutoScalingGroup2CPUAlarmHigh:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      EvaluationPeriods: '5'
+      Statistic: Average
+      Threshold: '60'
+      AlarmDescription: Alarm if CPU too high or metric disappears indicating instance is down
+      Period: '60'
+      AlarmActions:
+        - !Ref AutoScalingGroup2ScaleUpPolicy
+      Namespace: AWS/EC2
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref AutoScalingGroup2
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: CPUUtilization
+  AutoScalingGroup2TerminationLifecycleHook:
+    Type: 'AWS::AutoScaling::LifecycleHook'
+    Properties:
+      AutoScalingGroupName: !Ref AutoScalingGroup2
+      LifecycleTransition: 'autoscaling:EC2_INSTANCE_TERMINATING'
+      NotificationMetadata: '{"stack_uuid" : "${AWS::StackName}"}'
+      NotificationTargetARN: 'arn:aws:sns:us-east-1:327120324092:cf-stack-deployment-notifications'
+      RoleARN: !GetAtt 
+        - AutoScalingGroup2ASGLifeCycleHookRole
+        - Arn
+  AutoScalingGroup2LaunchLifecycleHook:
+    Type: 'AWS::AutoScaling::LifecycleHook'
+    Properties:
+      AutoScalingGroupName: !Ref AutoScalingGroup2
+      LifecycleTransition: 'autoscaling:EC2_INSTANCE_LAUNCHING'
+      NotificationMetadata: '{"stack_uuid" : "${AWS::StackName}"}'
+      NotificationTargetARN: 'arn:aws:sns:us-east-1:327120324092:cf-stack-deployment-notifications'
+      RoleARN: !GetAtt 
+        - AutoScalingGroup2ASGLifeCycleHookRole
+        - Arn
+  AutoScalingGroup2SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'swarm-workers-group, website and caylent server management access.'
+      VpcId: 
+        'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '443'
+          ToPort: '443'
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Value: swarm-worker-sg-asg
+          Key: Name
+  AutoScalingGroup2SecurityGroupIngressDcPorts1AutoScalingGroup1:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '2375'
+      ToPort: '2375'
+      SourceSecurityGroupId: !Ref AutoScalingGroup1SecurityGroup
+      GroupId: !Ref AutoScalingGroup2SecurityGroup
+    DependsOn:
+      - AutoScalingGroup1SecurityGroup
+      - AutoScalingGroup2SecurityGroup
+  AutoScalingGroup2SecurityGroupIngressDcPorts2AutoScalingGroup1:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '3375'
+      ToPort: '3375'
+      SourceSecurityGroupId: !Ref AutoScalingGroup1SecurityGroup
+      GroupId: !Ref AutoScalingGroup2SecurityGroup
+    DependsOn:
+      - AutoScalingGroup1SecurityGroup
+      - AutoScalingGroup2SecurityGroup
+  AutoScalingGroup2SecurityGroupIngressDcPorts3AutoScalingGroup1:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '2377'
+      ToPort: '2377'
+      SourceSecurityGroupId: !Ref AutoScalingGroup1SecurityGroup
+      GroupId: !Ref AutoScalingGroup2SecurityGroup
+    DependsOn:
+      - AutoScalingGroup1SecurityGroup
+      - AutoScalingGroup2SecurityGroup
+  AutoScalingGroup2SecurityGroupIngressDcPorts4AutoScalingGroup1:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '7946'
+      ToPort: '7946'
+      SourceSecurityGroupId: !Ref AutoScalingGroup1SecurityGroup
+      GroupId: !Ref AutoScalingGroup2SecurityGroup
+    DependsOn:
+      - AutoScalingGroup1SecurityGroup
+      - AutoScalingGroup2SecurityGroup
+  AutoScalingGroup2SecurityGroupIngressDcPorts1AutoScalingGroup2:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '2375'
+      ToPort: '2375'
+      SourceSecurityGroupId: !Ref AutoScalingGroup2SecurityGroup
+      GroupId: !Ref AutoScalingGroup2SecurityGroup
+    DependsOn:
+      - AutoScalingGroup2SecurityGroup
+      - AutoScalingGroup2SecurityGroup
+  AutoScalingGroup2SecurityGroupIngressDcPorts2AutoScalingGroup2:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '3375'
+      ToPort: '3375'
+      SourceSecurityGroupId: !Ref AutoScalingGroup2SecurityGroup
+      GroupId: !Ref AutoScalingGroup2SecurityGroup
+    DependsOn:
+      - AutoScalingGroup2SecurityGroup
+      - AutoScalingGroup2SecurityGroup
+  AutoScalingGroup2SecurityGroupIngressDcPorts3AutoScalingGroup2:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '2377'
+      ToPort: '2377'
+      SourceSecurityGroupId: !Ref AutoScalingGroup2SecurityGroup
+      GroupId: !Ref AutoScalingGroup2SecurityGroup
+    DependsOn:
+      - AutoScalingGroup2SecurityGroup
+      - AutoScalingGroup2SecurityGroup
+  AutoScalingGroup2SecurityGroupIngressDcPorts4AutoScalingGroup2:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: '7946'
+      ToPort: '7946'
+      SourceSecurityGroupId: !Ref AutoScalingGroup2SecurityGroup
+      GroupId: !Ref AutoScalingGroup2SecurityGroup
+    DependsOn:
+      - AutoScalingGroup2SecurityGroup
+      - AutoScalingGroup2SecurityGroup
+  AutoScalingGroup2ASGLifeCycleHookRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - autoscaling.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AutoScalingNotificationAccessRole'
+Outputs:
+  TemplateID:
+    Description: 'caylent.com template id'
+    Value: 'docker/ha-docker-stack'
+  StackName:
+    Description: 'Stack name'
+    Value: !Sub '${AWS::StackName}'
