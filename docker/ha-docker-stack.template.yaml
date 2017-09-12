@@ -203,7 +203,8 @@ Resources:
       AutoScalingGroupName: !Ref AutoScalingGroup1
       LifecycleTransition: 'autoscaling:EC2_INSTANCE_TERMINATING'
       NotificationMetadata: '{"stack_name" : "${AWS::StackName}"}'
-      NotificationTargetARN: 'arn:aws:sns:us-east-1:327120324092:cf-stack-deployment-notifications'
+      NotificationTargetARN:
+      - 'Fn::ImportValue': !Sub '${ParentAlertStack}-TopicARN'
       RoleARN: !GetAtt 
         - AutoScalingGroup1ASGLifeCycleHookRole
         - Arn
@@ -213,7 +214,8 @@ Resources:
       AutoScalingGroupName: !Ref AutoScalingGroup1
       LifecycleTransition: 'autoscaling:EC2_INSTANCE_LAUNCHING'
       NotificationMetadata: '{"stack_uuid" : "${AWS::StackName}"}'
-      NotificationTargetARN: 'arn:aws:sns:us-east-1:327120324092:cf-stack-deployment-notifications'
+      NotificationTargetARN:
+      - 'Fn::ImportValue': !Sub '${ParentAlertStack}-TopicARN'
       RoleARN: !GetAtt 
         - AutoScalingGroup1ASGLifeCycleHookRole
         - Arn
@@ -407,7 +409,8 @@ Resources:
       AutoScalingGroupName: !Ref AutoScalingGroup2
       LifecycleTransition: 'autoscaling:EC2_INSTANCE_TERMINATING'
       NotificationMetadata: '{"stack_uuid" : "${AWS::StackName}"}'
-      NotificationTargetARN: 'arn:aws:sns:us-east-1:327120324092:cf-stack-deployment-notifications'
+      NotificationTargetARN:
+      - 'Fn::ImportValue': !Sub '${ParentAlertStack}-TopicARN'
       RoleARN: !GetAtt 
         - AutoScalingGroup2ASGLifeCycleHookRole
         - Arn
@@ -417,7 +420,8 @@ Resources:
       AutoScalingGroupName: !Ref AutoScalingGroup2
       LifecycleTransition: 'autoscaling:EC2_INSTANCE_LAUNCHING'
       NotificationMetadata: '{"stack_uuid" : "${AWS::StackName}"}'
-      NotificationTargetARN: 'arn:aws:sns:us-east-1:327120324092:cf-stack-deployment-notifications'
+      NotificationTargetARN:
+      - 'Fn::ImportValue': !Sub '${ParentAlertStack}-TopicARN'
       RoleARN: !GetAtt 
         - AutoScalingGroup2ASGLifeCycleHookRole
         - Arn
