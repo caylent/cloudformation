@@ -28,9 +28,6 @@ Resources:
         Value: !Sub '10.${ClassB}.0.0/16'
       - Key: caylent-id
         Value: Public
-    Metadata:
-      CAYLENT::NETWORK:
-        uuid: ''
   PublicSubnet1:
     Type: 'AWS::EC2::Subnet'
     Properties:
@@ -39,31 +36,24 @@ Resources:
       CidrBlock: !Sub '10.${ClassB}.1.0/24'
       Tags:
       - Key: Name
-        Value: ''
-      - Key: caylent-id
-        Value: Public
+        Value: 'Public 1'
       - Key: Network
         Value: Public
-    Metadata:
-      CAYLENT::SUBNET:
-        uuid: ''
   PublicSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: !Select [1, !GetAZs '']    
+      AvailabilityZone: !Select [1, !GetAZs '']
       VpcId: !Ref VPC
       CidrBlock: !Sub '10.${ClassB}.2.0/24'
       Tags:
       - Key: Name
-        Value: 'Public 1'
-      - Key: Type
-        Value: public
+        Value: 'Public 2'
       - Key: Network
         Value: Public
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: !Select [0, !GetAZs '']    
+      AvailabilityZone: !Select [0, !GetAZs '']
       VpcId: !Ref VPC
       CidrBlock: !Sub '10.${ClassB}.3.0/24'
       Tags:
@@ -74,7 +64,7 @@ Resources:
   PrivateSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
-      AvailabilityZone: !Select [1, !GetAZs '']    
+      AvailabilityZone: !Select [1, !GetAZs '']
       VpcId: !Ref VPC
       CidrBlock: !Sub '10.${ClassB}.4.0/24'
       Tags:
@@ -96,24 +86,150 @@ Resources:
       VpcId: !Ref VPC
       InternetGatewayId:
         Ref: InternetGateway
-  PublicRouteTable:
-    Type: AWS::EC2::RouteTable
+  RouteTablePublic1:
+    Type: 'AWS::EC2::RouteTable'
     Properties:
       VpcId: !Ref VPC
       Tags:
       - Key: Name
-        Value: public-route
+        Value: 'public-route-1'
       - Key: Network
         Value: Public
-  PublicRoute:
-    Type: AWS::EC2::Route
+  RouteTablePrivate1:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: 'private-route-1'
+      - Key: Network
+        Value: Private
+  RouteTablePublic2:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: 'public-route-2'
+      - Key: Network
+        Value: Public
+  RouteTablePrivate2:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: 'private-route-2'
+      - Key: Network
+        Value: Private
+  RouteTableAssociationPublic1:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref RouteTablePublic1
+  RouteTableAssociationPrivate1:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref RouteTablePrivate1
+  RouteTableAssociationPublic2:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref RouteTablePublic2
+  RouteTableAssociationPrivate2:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref RouteTablePrivate2
+  RouteTablePublic1InternetRoute:
+    Type: 'AWS::EC2::Route'
     DependsOn: GatewayToInternet
     Properties:
       RouteTableId:
-        Ref: PublicRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
+        Ref: RouteTablePublic1
+      DestinationCidrBlock: '0.0.0.0/0'
       GatewayId:
         Ref: InternetGateway
+  RouteTablePublic2InternetRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: GatewayToInternet
+    Properties:
+      RouteTableId:
+        Ref: RouteTablePublic2
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId:
+        Ref: InternetGateway
+  NetworkAclPublic:
+    Type: 'AWS::EC2::NetworkAcl'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: Public
+  NetworkAclPrivate:
+    Type: 'AWS::EC2::NetworkAcl'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: Private
+  PublicSubnet1NetworkAclAssociation:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      NetworkAclId: !Ref NetworkAclPublic
+  PrivateSubnet1NetworkAclAssociation:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      NetworkAclId: !Ref NetworkAclPrivate
+  PublicSubnet2NetworkAclAssociation:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      NetworkAclId: !Ref NetworkAclPublic
+  PrivateSubnet2NetworkAclAssociation:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      NetworkAclId: !Ref NetworkAclPrivate
+  NetworkAclEntryInPublicAllowAll:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref NetworkAclPublic
+      RuleNumber: 100
+      Protocol: -1
+      RuleAction: allow
+      Egress: false
+      CidrBlock: '0.0.0.0/0'
+  NetworkAclEntryOutPublicAllowAll:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref NetworkAclPublic
+      RuleNumber: 100
+      Protocol: -1
+      RuleAction: allow
+      Egress: true
+      CidrBlock: '0.0.0.0/0'
+  NetworkAclEntryInPrivateAllowVPC:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref NetworkAclPrivate
+      RuleNumber: 100
+      Protocol: -1
+      RuleAction: allow
+      Egress: false
+      CidrBlock: '0.0.0.0/0'
+  NetworkAclEntryOutPrivateAllowVPC:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref NetworkAclPrivate
+      RuleNumber: 100
+      Protocol: -1
+      RuleAction: allow
+      Egress: true
+      CidrBlock: '0.0.0.0/0'
 Outputs:
   TemplateID:
     Description: 'caylent.com template id'
@@ -137,7 +253,7 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-AZ2'
   ClassB:
-    Description: 'Class B.'
+    Description: 'Class B'
     Value: !Ref ClassB
     Export:
       Name: !Sub '${AWS::StackName}-ClassB'
@@ -147,32 +263,62 @@ Outputs:
     Export:
         Name: !Sub '${AWS::StackName}-VPC'
   SubnetsPublic:
-    Description: 'Subnets public.'
+    Description: 'Subnets public'
     Value: !Join [',', [!Ref PublicSubnet1, !Ref PublicSubnet2]]
     Export:
       Name: !Sub '${AWS::StackName}-SubnetsPublic'
   SubnetsPrivate:
-    Description: 'Subnets private.'
+    Description: 'Subnets private'
     Value: !Join [',', [!Ref PrivateSubnet1, !Ref PrivateSubnet2]]
     Export:
       Name: !Sub '${AWS::StackName}-SubnetsPrivate'
+  RouteTablesPrivate:
+    Description: 'Route tables private'
+    Value: !Join [',', [!Ref RouteTablePrivate1, !Ref RouteTablePrivate2]]
+    Export:
+      Name: !Sub '${AWS::StackName}-RouteTablesPrivate'
+  RouteTablesPublic:
+    Description: 'Route tables public'
+    Value: !Join [',', [!Ref RouteTablePublic1, !Ref RouteTablePublic2]]
+    Export:
+      Name: !Sub '${AWS::StackName}-RouteTablesPublic'
   PublicSubnet1:
     Description: 'Public Subnet 1'
     Value: !Ref PublicSubnet1
     Export:
       Name: !Sub '${AWS::StackName}-PublicSubnet1'
+  RouteTablePublic1:
+    Description: 'Route table Public 1'
+    Value: !Ref RouteTablePublic1
+    Export:
+      Name: !Sub '${AWS::StackName}-RouteTablePublic1'
   PublicSubnet2:
     Description: 'Public Subnet 2'
     Value: !Ref PublicSubnet2
     Export:
-      Name: !Sub '${AWS::StackName}-PublicSubnet2'    
+      Name: !Sub '${AWS::StackName}-PublicSubnet2'
+  RouteTablePublic2:
+    Description: 'Route table Public 2'
+    Value: !Ref RouteTablePublic2
+    Export:
+      Name: !Sub '${AWS::StackName}-RouteTablePublic2'
   PrivateSubnet1:
     Description: 'Private Subnet 1'
     Value: !Ref PrivateSubnet1
     Export:
-      Name: !Sub '${AWS::StackName}-PrivateSubnet1'    
+      Name: !Sub '${AWS::StackName}-PrivateSubnet1'
+  RouteTablePrivate1:
+    Description: 'Route table Private 1'
+    Value: !Ref RouteTablePrivate1
+    Export:
+      Name: !Sub '${AWS::StackName}-RouteTablePrivate1'
   PrivateSubnet2:
     Description: 'Private Subnet 2'
     Value: !Ref PrivateSubnet2
     Export:
-      Name: !Sub '${AWS::StackName}-PrivateSubnet2'    
+      Name: !Sub '${AWS::StackName}-PrivateSubnet2'
+  RouteTablePrivate2:
+    Description: 'Route table Private 2'
+    Value: !Ref RouteTablePrivate2
+    Export:
+      Name: !Sub '${AWS::StackName}-RouteTablePrivate2'
