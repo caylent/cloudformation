@@ -27,12 +27,13 @@ Parameters:
         Description: 'Stack name of parent VPC stack based on vpc/ha-vpc-*azs.template.yaml.'
         Type: String
     ParentAlertStack:
-        Description: 'Optional but recommended stack name of parent alert stack based on operations/alert.yaml template.'
+        Description: 'Stack name of parent alert stack based on operations/alert.yaml template.'
         Type: String
         Default: ''
     EC2ServerKeyName:
-        Description: 'Optional key pair of the ec2-user to establish a SSH connection to the ec2 servers.'
+        Description: 'Name of an existing EC2 KeyPair to enable SSH access to the instance.'
         Type: String
+        ConstraintDescription: 'must be the name of an existing EC2 KeyPair.'
         Default: ''
     EC2ServerIAMUserSSHAccess:
         Description: 'Synchronize public keys of IAM users to enable personalized SSH access.'
@@ -264,7 +265,7 @@ Resources:
       NotificationTargetARN:
         Fn::ImportValue:
           !Sub "${ParentAlertStack}-TopicARN"
-      RoleARN: !GetAtt 
+      RoleARN: !GetAtt
         - AutoScalingGroup1ASGLifeCycleHookRole
         - Arn
   AutoScalingGroup1LaunchLifecycleHook:
