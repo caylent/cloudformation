@@ -220,7 +220,7 @@ Resources:
     Type: 'AWS::AutoScaling::LaunchConfiguration'
     Properties:
       AssociatePublicIpAddress: true
-      IamInstanceProfile: !Ref EC2ServerInstanceProfile  
+      IamInstanceProfile: !Ref EC2ServerInstanceProfile
       KeyName: !If [HasKeyName, !Ref EC2ServerKeyName, !Ref 'AWS::NoValue']
       ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', AMI]
       SecurityGroups:
@@ -262,7 +262,8 @@ Resources:
       LifecycleTransition: 'autoscaling:EC2_INSTANCE_TERMINATING'
       NotificationMetadata: '{"stack_name" : "${AWS::StackName}"}'
       NotificationTargetARN:
-      - 'Fn::ImportValue': !Sub '${ParentAlertStack}-TopicARN'
+        Fn::ImportValue:
+          !Sub "${ParentAlertStack}-TopicARN"
       RoleARN: !GetAtt 
         - AutoScalingGroup1ASGLifeCycleHookRole
         - Arn
@@ -273,15 +274,16 @@ Resources:
       LifecycleTransition: 'autoscaling:EC2_INSTANCE_LAUNCHING'
       NotificationMetadata: '{"stack_name" : "${AWS::StackName}"}'
       NotificationTargetARN:
-      - 'Fn::ImportValue': !Sub '${ParentAlertStack}-TopicARN'
-      RoleARN: !GetAtt 
+        Fn::ImportValue:
+          !Sub "${ParentAlertStack}-TopicARN"
+      RoleARN: !GetAtt
         - AutoScalingGroup1ASGLifeCycleHookRole
         - Arn
   AutoScalingGroup1SecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: 'swarm-master-group, website and caylent server management access.'
-      VpcId: 
+      VpcId:
         'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -469,8 +471,9 @@ Resources:
       LifecycleTransition: 'autoscaling:EC2_INSTANCE_TERMINATING'
       NotificationMetadata: '{"stack_name" : "${AWS::StackName}"}'
       NotificationTargetARN:
-      - 'Fn::ImportValue': !Sub '${ParentAlertStack}-TopicARN'
-      RoleARN: !GetAtt 
+        Fn::ImportValue:
+          !Sub "${ParentAlertStack}-TopicARN"
+      RoleARN: !GetAtt
         - AutoScalingGroup2ASGLifeCycleHookRole
         - Arn
   AutoScalingGroup2LaunchLifecycleHook:
@@ -480,15 +483,16 @@ Resources:
       LifecycleTransition: 'autoscaling:EC2_INSTANCE_LAUNCHING'
       NotificationMetadata: '{"stack_name" : "${AWS::StackName}"}'
       NotificationTargetARN:
-      - 'Fn::ImportValue': !Sub '${ParentAlertStack}-TopicARN'
-      RoleARN: !GetAtt 
+        Fn::ImportValue:
+          !Sub "${ParentAlertStack}-TopicARN"
+      RoleARN: !GetAtt
         - AutoScalingGroup2ASGLifeCycleHookRole
         - Arn
   AutoScalingGroup2SecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: 'swarm-workers-group, website and caylent server management access.'
-      VpcId: 
+      VpcId:
         'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
       SecurityGroupIngress:
         - IpProtocol: tcp
